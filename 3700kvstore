@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-import sys, socket, select, time, json, random
+import math, sys, socket, select, datetime, json, random
 
 # Your ID number
 my_id = sys.argv[1]
@@ -20,67 +20,78 @@ state = "follower"
 alreadyVoted = 0
 received = 0
 timeout_num = random.randrange(150, 300, 1)
+in_election = False
 
 log = []
 
 def make_fail(msg):
     return json.dumps({"src": msg["dst"], "dst": msg["src"], "leader": msg["leader"], "type": "fail", "MID": msg["MID"]})
 
-def send_ballot(): 
+def send_ballot():
+    if len(log) == 0:
+        last_log_term = -1
+    else:
+        last_log_term = log[-1]
+ 
     for val in replica_ids:
-        sock.send(json.dumps({"src": my_id, "dst": val, "leader": "FFFF", "type": "ballot", "term": log[-1], "log_len": len(log) - 1}))
+        sock.send(json.dumps({"src": my_id, "dst": val, "leader": "FFFF", "type": "ballot", "log_term": last_log_term, "log_len": len(log) - 1, "cur_term": term}).encode("ascii"))
 
 def start_election():
+    global term, state, alreadyVoted, received
     #when thing timesout go here
+    in_election = True
     term += 1
     state = "candidate"
-    num_votes = 1
-    already_voted = 1
-    received += 1
+    alreadyVoted = 1
+    received = 1
     send_ballot()
 
 def recv_ballot(msg):
+    global alreadyVoted
     #if already voted in current term ignore
     if alreadyVoted == 0: 
         index_ballot = msg["log_len"]
         index_voter = len(log) - 1
-        term_ballot = msg["term"]
-        term_voter = log[-1]
+        term_ballot = msg["log_term"]
+        term_voter = -1 if len(log) == 0 else log[-1]
+        cur_term_ballot = msg["cur_term"]
         if term_ballot >= term_voter: 
-            if index_ballot >= index_ballot: 
-                sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote"}))
-                alreadyVoted = 1
+            if index_ballot >= index_ballot:
+                if (not in_election) or (in_election and cur_term_ballot > term):
+                    sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote"}).encode("ascii"))
+                    alreadyVoted = 1
+                
         
-def recv_vote(): 
-    num_votes = num_votes + 1
+def recv_vote():
+    global received
     received += 1
-    if ((len(replica_ids) / 2) + 1) <= received: 
+    if (math.floor(len(replica_ids) / 2) + 1) <= received: 
         end_election("win")  
 
 def end_election(result):
+    global in_election, leader, term, alreadyVoted
+    in_election = False
     if result == "win":
-        term += 1
         leader = my_id  
         for val in replica_ids:
-            sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat"}))
-    if result == "timeout":
-        #go to the timeout 
+            sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "term": term}).encode("ascii"))
     else: 
         #result is lose
-        term += 1 
-        leader = result 
+        term = result["term"]
+        leader = result["leader"]
+        alreadyVoted = 0
 
 while True:
     ready = select.select([sock], [], [], 0.1)[0]
 
     if sock in ready:
-        msg_raw = sock.recv(32768)
+        msg_raw = sock.recv(32768).decode("ascii")
 
         if len(msg_raw) == 0: continue
         msg = json.loads(msg_raw)
 
-        if msg["leader"] == leader:
-            last = time.time()
+        #if msg["leader"] == leader:
+        #    last = time.time()
 
         if msg['type'] == "ballot":
             recv_ballot(msg)
@@ -89,20 +100,19 @@ while True:
             recv_vote()
 
         if msg['type'] == "heartbeat":
-            end_election(msg["src"])
+            end_election(msg)
 
         # For now, ignore get() and put() from clients
         if msg['type'] in ['get', 'put']:
             log.append(term) 
-            sock.send(make_fail(msg))
+            sock.send(make_fail(msg).encode("ascii"))
 
         # Handle noop messages. This may be removed from your final implementation
         elif msg['type'] == 'noop':
-            print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
+            print('%s received a NOOP from %s' % (msg['dst'], msg['src']))
 
-    clock = time.time()
-    msecs = clock.microsecond / 1000
-    if clock - last > 2:
+    msecs = datetime.datetime.now().timestamp() * 1000
+    if msecs - last > timeout_num:
         # Send a no-op message to a random peer every two seconds, just for fun
         # You definitely want to remove this from your implementation
         #msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': 'FFFF', 'type': 'noop'}
@@ -111,4 +121,4 @@ while True:
 
         #timeout happened call doelection
         start_election()
-        last = clock
+        last = msecs
