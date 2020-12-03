@@ -36,6 +36,7 @@ def make_redirect(msg):
     global leader 
     if leader == " ":
         lead = "FFFF"
+        #print("I HAVE NO HECKIN CLUE WHO THE LEADER IS") 
     else:
         lead = leader
     return json.dumps({"src": my_id, "dst": msg["src"], "leader": lead, "type": "redirect", "MID": msg["MID"]})
@@ -112,6 +113,8 @@ while True:
             recv_vote()
 
         if msg['type'] == "heartbeat":
+            msecs = datetime.datetime.now().timestamp() * 1000
+            last = msecs 
             end_election(msg)
 
         if msg['type'] == "put":
@@ -136,13 +139,14 @@ while True:
             print('%s received a NOOP from %s' % (msg['dst'], msg['src']))
 
     msecs = datetime.datetime.now().timestamp() * 1000
+    #print("MSECS {0}, LAST {1}, MSECS-LAST {2}, TIMEOUT {3}".format(msecs, last, msecs-last, timeout_num))
     if msecs - last > timeout_num:
-        # Send a no-op message to a random peer every two seconds, just for fun
-        # You definitely want to remove this from your implementation
-        #msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': 'FFFF', 'type': 'noop'}
-        #sock.send(json.dumps(msg))
-        #print '%s sending a NOOP to %s' % (msg['src'], msg['dst'])
-
         #timeout happened call doelection
         start_election()
         last = msecs
+
+    if msecs - last > 100:
+        if leader == my_id: 
+            for val in replica_ids: 
+                sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "term": term}).encode("ascii"))
+            last = msecs 
