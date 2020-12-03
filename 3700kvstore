@@ -23,9 +23,22 @@ timeout_num = random.randrange(150, 300, 1)
 in_election = False
 
 log = []
+values = {} 
 
 def make_fail(msg):
     return json.dumps({"src": msg["dst"], "dst": msg["src"], "leader": msg["leader"], "type": "fail", "MID": msg["MID"]})
+
+def make_ok(msg, val): 
+    global leader
+    return json.dumps({"src": my_id, "dst": msg["src"], "leader": leader, "type": "ok", "MID": msg["MID"], "value": val})
+
+def make_redirect(msg):
+    global leader 
+    if leader == "":
+        lead = "FFFF"
+    else:
+        lead = leader
+    return json.dumps({"src": my_id, "dst": msg["src"], "leader": lead, "type": "redirect", "MID": msg["MID"]})
 
 def send_ballot():
     if len(log) == 0:
@@ -60,7 +73,11 @@ def recv_ballot(msg):
                 if (not in_election) or (in_election and cur_term_ballot > term):
                     sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote"}).encode("ascii"))
                     alreadyVoted = 1
-                
+
+def recv_redirect(msg):
+    if msg["leader"] == "FFFF": 
+        for val in replica_ids: 
+            pass
         
 def recv_vote():
     global received
@@ -102,10 +119,22 @@ while True:
         if msg['type'] == "heartbeat":
             end_election(msg)
 
-        # For now, ignore get() and put() from clients
-        if msg['type'] in ['get', 'put']:
-            log.append(term) 
-            sock.send(make_fail(msg).encode("ascii"))
+        if msg['type'] == "put":
+            if leader == my_id:
+                log.append(term)
+                values[msg['key']] = msg['value']
+                if msg['key'] in values.keys():
+                    sock.send(make_ok(msg, "OK").encode("ascii"))
+                else: 
+                    sock.send(make_fail(msg).encode("ascii"))
+            else: 
+                sock.send(make_redirect(msg).encode("ascii"))
+
+        if msg['type'] == "get":
+            if msg['key'] in values.keys():
+                sock.send(make_ok(msg, values[msg['key']]).encode("ascii"))
+            else: 
+                sock.send(make_ok(msg, "").encode("ascii"))
 
         # Handle noop messages. This may be removed from your final implementation
         elif msg['type'] == 'noop':
