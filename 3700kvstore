@@ -14,7 +14,7 @@ sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
 sock.connect(my_id)
 
 last = 0
-leader = ""
+leader = " "
 term = 0
 state = "follower"
 alreadyVoted = 0
@@ -34,7 +34,7 @@ def make_ok(msg, val):
 
 def make_redirect(msg):
     global leader 
-    if leader == "":
+    if leader == " ":
         lead = "FFFF"
     else:
         lead = leader
@@ -74,11 +74,6 @@ def recv_ballot(msg):
                     sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote"}).encode("ascii"))
                     alreadyVoted = 1
 
-def recv_redirect(msg):
-    if msg["leader"] == "FFFF": 
-        for val in replica_ids: 
-            pass
-        
 def recv_vote():
     global received
     received += 1
