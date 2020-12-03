@@ -129,7 +129,7 @@ while True:
             if msg['key'] in values.keys():
                 sock.send(make_ok(msg, values[msg['key']]).encode("ascii"))
             else: 
-                sock.send(make_ok(msg, "").encode("ascii"))
+                sock.send(make_fail(msg).encode("ascii"))
 
         # Handle noop messages. This may be removed from your final implementation
         elif msg['type'] == 'noop':
