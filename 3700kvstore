@@ -21,6 +21,10 @@ alreadyVoted = 0
 received = 0
 timeout_num = random.randrange(150, 300, 1)
 in_election = False
+commitIndex = 0
+nextIndex = {}
+matchIndex = {}
+new_entries = []
 
 log = []
 values = {} 
@@ -51,8 +55,9 @@ def send_ballot():
         sock.send(json.dumps({"src": my_id, "dst": val, "leader": "FFFF", "type": "ballot", "log_term": last_log_term, "log_len": len(log) - 1, "cur_term": term}).encode("ascii"))
 
 def start_election():
-    global term, state, alreadyVoted, received
+    global term, state, alreadyVoted, received, in_election
     #when thing timesout go here
+    print("starting election")
     in_election = True
     term += 1
     state = "candidate"
@@ -72,27 +77,80 @@ def recv_ballot(msg):
         if term_ballot >= term_voter: 
             if index_ballot >= index_ballot:
                 if (not in_election) or (in_election and cur_term_ballot > term):
-                    sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote"}).encode("ascii"))
+                    sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "true", "term": term}).encode("ascii"))
                     alreadyVoted = 1
+                    print("ddddddddddddddddd")
+                else:
+                    sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "false", "term": term}).encode("ascii"))
+                    print("eeeeeeeeeeeeee")
 
-def recv_vote():
+def recv_vote(msg):
     global received
-    received += 1
-    if (math.floor(len(replica_ids) / 2) + 1) <= received: 
-        end_election("win")  
+    print("inelec", in_election)
+    if in_election:
+        print(msg["voteGranted"], type(msg["voteGranted"]))
+        if msg["voteGranted"] == "true":
+            received += 1
+            if (math.floor(len(replica_ids) / 2) + 1) <= received: 
+                end_election("win")
+        elif msg["term"] > term:
+            term = msg["term"]
+            end_election("cancel")
 
 def end_election(result):
     global in_election, leader, term, alreadyVoted
     in_election = False
     if result == "win":
+        for replica in replica_ids:
+            nextIndex[replica] = len(log)
+            matchIndex[replica] = 0
+
         leader = my_id  
+        state = "leader"
         for val in replica_ids:
             sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "term": term}).encode("ascii"))
+    elif result == "cancel":
+        state = "follower"
     else: 
         #result is lose
         term = result["term"]
         leader = result["leader"]
+        state = "follower"
         alreadyVoted = 0
+
+def send_append_entry(rep_id):
+    sock.send(json.dumps({"src": my_id, "dst": rep_id, "leader": my_id, "type": "appendEntry", "term": term, "prevLogIndex": nextIndex[rep_id], "entries": new_entries, "leaderCommit": commitIndex}).encode("ascii"))
+
+def append_entry(msg):
+    global commitIndex
+    success = True
+    if msg["term"] < term:
+        success = False
+    elif msg["prevLogIndex"] >= len(log):
+        success = False
+    else:
+        if log[msg["prevLogIndex"]]["term"] != prevLogTerm:
+            while len(log) > msg["prevLogIndex"]:
+                del log[len(log) - 1]
+
+        log.extend(msg["entries"])
+
+        if msg["leaderCommit"] > commitIndex:
+            commitIndex = min(msg["leaderCommit"], len(log) - 1)
+
+    sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": msg["leader"], "type": "appendEntryResp", "term": term, "success": success}).encode("ascii"))
+
+
+def append_entry_resp(msg):
+    rep_id = msg["src"]
+    if msg["success"]:
+        nextIndex[rep_id] += len(new_entries)
+        matchIndex[rep_id] += len(new_entries)
+    else:
+        term = msg["term"]
+        nextIndex[rep_id] -= 1
+        send_append_entry(rep_id)
+
 
 while True:
     ready = select.select([sock], [], [], 0.1)[0]
@@ -110,19 +168,33 @@ while True:
             recv_ballot(msg)
 
         if msg['type'] == "vote":
-            recv_vote()
+            recv_vote(msg)
 
         if msg['type'] == "heartbeat":
+            state = "follower"
             msecs = datetime.datetime.now().timestamp() * 1000
             last = msecs 
-            end_election(msg)
+            if in_election:
+                end_election(msg)
+
+        if msg["type"] == "appendEntry":
+            append_entry(msg)
+
+        if msg["type"] == "appendEntryResp":
+            append_entry_resp(msg)
+            #todo: finish
+            #      ...
 
         if msg['type'] == "put":
             if leader == my_id:
-                log.append(term)
+                entry = {"key": msg["key"], "value": msg["value"], "term": term}
+                log.append(entry)
                 values[msg['key']] = msg['value']
                 if msg['key'] in values.keys():
                     sock.send(make_ok(msg, "OK").encode("ascii"))
+                    new_entries = [entry] #todo prevent sending new entries to out of date reps
+                    for replica in replica_ids:
+                        send_append_entry(replica)
                 else: 
                     sock.send(make_fail(msg).encode("ascii"))
             else: 
@@ -140,12 +212,12 @@ while True:
 
     msecs = datetime.datetime.now().timestamp() * 1000
     #print("MSECS {0}, LAST {1}, MSECS-LAST {2}, TIMEOUT {3}".format(msecs, last, msecs-last, timeout_num))
-    if msecs - last > timeout_num:
+    if (not (leader == my_id)) and  msecs - last > timeout_num:
         #timeout happened call doelection
         start_election()
         last = msecs
 
-    if msecs - last > 100:
+    if (leader == my_id) and msecs - last > 100:
         if leader == my_id: 
             for val in replica_ids: 
                 sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "term": term}).encode("ascii"))
