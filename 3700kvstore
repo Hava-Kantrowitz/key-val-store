@@ -108,7 +108,7 @@ def end_election(result):
         leader = my_id  
         state = "leader"
         for val in replica_ids:
-            sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "term": term}).encode("ascii"))
+            sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "commitIndex": commitIndex, "term": term}).encode("ascii"))
     elif result == "cancel":
         state = "follower"
     else: 
@@ -119,19 +119,22 @@ def end_election(result):
         alreadyVoted = 0
 
 def send_append_entry(rep_id):
-    sock.send(json.dumps({"src": my_id, "dst": rep_id, "leader": my_id, "type": "appendEntry", "term": term, "prevLogIndex": nextIndex[rep_id], "entries": new_entries, "leaderCommit": commitIndex}).encode("ascii"))
+    sock.send(json.dumps({"src": my_id, "dst": rep_id, "leader": my_id, "type": "appendEntry", "term": term, "prevLogTerm": log[nextIndex[rep_id]]["term"], "prevLogIndex": nextIndex[rep_id], "entries": new_entries, "leaderCommit": commitIndex}).encode("ascii"))
 
 def append_entry(msg):
     global commitIndex
     success = True
     if msg["term"] < term:
         success = False
-    elif msg["prevLogIndex"] >= len(log):
+    elif msg["prevLogIndex"] != 0 and len(log) != 0 and msg["prevLogIndex"] >= len(log):
         success = False
     else:
-        if log[msg["prevLogIndex"]]["term"] != prevLogTerm:
-            while len(log) > msg["prevLogIndex"]:
-                del log[len(log) - 1]
+        print(msg) 
+        if len(log) > 0: 
+            #print(log[msg["prevLogIndex"]])
+            if log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]:
+                while len(log) > msg["prevLogIndex"]:
+                    del log[len(log) - 1]
 
         log.extend(msg["entries"])
 
@@ -173,7 +176,8 @@ while True:
         if msg['type'] == "heartbeat":
             state = "follower"
             msecs = datetime.datetime.now().timestamp() * 1000
-            last = msecs 
+            last = msecs
+            commitIndex = msg['commitIndex']  
             if in_election:
                 end_election(msg)
 
@@ -220,5 +224,5 @@ while True:
     if (leader == my_id) and msecs - last > 100:
         if leader == my_id: 
             for val in replica_ids: 
-                sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "term": term}).encode("ascii"))
+                sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "commitIndex": commitIndex, "term": term}).encode("ascii"))
             last = msecs 
