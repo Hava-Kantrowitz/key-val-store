@@ -75,10 +75,14 @@ def recv_ballot(msg):
     term_ballot = msg["log_term"]
     term_voter = -1 if len(log) == 0 else log[-1]["term"]
     cur_term_ballot = msg["cur_term"]
-    print(type(term_ballot), type(term_voter), previousTermVoted, term_ballot)
-    if term_ballot >= term_voter and previousTermVoted < term_ballot: 
+    print(type(term_ballot), type(term_voter), previousTermVoted, term_ballot, term_voter)
+    if cur_term_ballot < term: 
+        sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "false", "term": term}).encode("ascii"))
+    elif term_ballot >= term_voter and previousTermVoted < term: 
         if index_ballot >= index_voter:
             if (not in_election) or (in_election and cur_term_ballot > term):
+                if cur_term_ballot > term: 
+                    state = "follower" 
                 sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "true", "term": term}).encode("ascii"))
                 previousTermVoted = term_ballot
                 print("ddddddddddddddddd")
@@ -88,7 +92,7 @@ def recv_ballot(msg):
                 print("eeeeeeeeeeeeee")
 
 def recv_vote(msg):
-    global received
+    global received, term
     print("inelec", in_election)
     if in_election:
         print(msg["voteGranted"], type(msg["voteGranted"]))
@@ -125,6 +129,7 @@ def end_election(result):
         previousTermVoted = term
 
 def send_append_entry(rep_id):
+    print("HIIIIIIIIIIIIIIIIIIIIII", nextIndex[rep_id])
     sock.send(json.dumps({"src": my_id, "dst": rep_id, "leader": my_id, "type": "appendEntry", "term": term, "prevLogTerm": log[nextIndex[rep_id]]["term"], "prevLogIndex": nextIndex[rep_id], "entries": new_entries, "leaderCommit": commitIndex}).encode("ascii"))
 
 def append_entry(msg):
@@ -132,10 +137,10 @@ def append_entry(msg):
     success = True
     if msg["term"] < term:
         success = False
-    elif msg["prevLogIndex"] != 0 and len(log) != 0 and msg["prevLogIndex"] >= len(log):
-        success = False
+    elif msg["prevLogIndex"] >= len(log) and log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]:
+        success = False  
     else:
-        print(msg) 
+        #print(msg) 
         if len(log) > 0: 
             #print(log[msg["prevLogIndex"]])
             if log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]:
