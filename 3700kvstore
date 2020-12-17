@@ -52,13 +52,13 @@ def send_ballot():
         last_log_term = log[-1]["term"]
  
     for val in replica_ids:
-        print(my_id, "is sending ballot")
+        #print(my_id, "is sending ballot")
         sock.send(json.dumps({"src": my_id, "dst": val, "leader": "FFFF", "type": "ballot", "log_term": last_log_term, "log_len": len(log) - 1, "cur_term": term}).encode("ascii"))
 
 def start_election():
     global term, state, previousTermVoted, received, in_election
     #when thing timesout go here
-    print("starting election")
+    #print("starting election")
     in_election = True
     term += 1
     state = "candidate"
@@ -69,16 +69,16 @@ def start_election():
 def recv_ballot(msg):
     global previousTermVoted, term
     #if already voted in current term ignore
-    print(my_id, "receiving ballot from", msg["src"])
+    #print(my_id, "receiving ballot from", msg["src"])
     index_ballot = msg["log_len"]
     index_voter = len(log) - 1
     term_ballot = msg["log_term"]
     term_voter = -1 if len(log) == 0 else log[-1]["term"]
     cur_term_ballot = msg["cur_term"]
-    print(type(term_ballot), type(term_voter), previousTermVoted, term_ballot, term_voter)
+    #print(type(term_ballot), type(term_voter), previousTermVoted, term_ballot, term_voter)
     voted = False
     if cur_term_ballot < term: 
-        print("eeee")
+        #print("eeee")
         sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "false", "term": term}).encode("ascii"))
     elif term_ballot >= term_voter and previousTermVoted < term:
         if index_ballot >= index_voter:
@@ -88,7 +88,7 @@ def recv_ballot(msg):
                 sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "true", "term": term}).encode("ascii"))
                 voted = True
                 previousTermVoted = term_ballot
-                print("ddddddddddddddddd")
+                #print("ddddddddddddddddd")
                 #todo maybe set term to candidate's term
             
     if cur_term_ballot > term:
@@ -96,14 +96,14 @@ def recv_ballot(msg):
 
     if not voted:
         sock.send(json.dumps({"src": my_id, "dst": msg["src"], "leader": "FFFF", "type": "vote", "voteGranted": "false", "term": term}).encode("ascii"))
-        print("eeeeeeeeeeeeee")
+        #print("eeeeeeeeeeeeee")
 
 
 def recv_vote(msg):
     global received, term
-    print("inelec", in_election)
+    #print("inelec", in_election)
     if in_election:
-        print(msg["voteGranted"], type(msg["voteGranted"]))
+        #print(msg["voteGranted"], type(msg["voteGranted"]))
         if msg["voteGranted"] == "true":
             received += 1
             if (math.floor(len(replica_ids) / 2) + 1) <= received: 
@@ -116,7 +116,7 @@ def end_election(result):
     global in_election, leader, term, previousTermVoted
     in_election = False
     if result == "win":
-        print(my_id, "won")
+        #print(my_id, "won")
         for replica in replica_ids:
             nextIndex[replica] = len(log)
             matchIndex[replica] = 0
@@ -126,10 +126,10 @@ def end_election(result):
         for val in replica_ids:
             sock.send(json.dumps({"src": my_id, "dst": val, "leader": my_id, "type": "heartbeat", "commitIndex": commitIndex, "term": term}).encode("ascii"))
     elif result == "cancel":
-        print(my_id, "canceled")
+        #print(my_id, "canceled")
         state = "follower"
     else: 
-        print(my_id, "lost")
+        #print(my_id, "lost")
         #result is lose
         term = result["term"]
         leader = result["leader"]
@@ -137,24 +137,24 @@ def end_election(result):
         previousTermVoted = term
 
 def send_append_entry(rep_id):
-    print("HIIIIIIIIIIIIIIIIIIIIII", nextIndex[rep_id], len(log))
+    #print("HIIIIIIIIIIIIIIIIIIIIII", nextIndex[rep_id], len(log))
     sock.send(json.dumps({"src": my_id, "dst": rep_id, "leader": my_id, "type": "appendEntry", "term": term, "prevLogTerm": log[nextIndex[rep_id]]["term"], "prevLogIndex": nextIndex[rep_id], "entries": new_entries, "leaderCommit": commitIndex}).encode("ascii"))
 
 def append_entry(msg):
     global commitIndex
     success = True
-    print("idxxxxxxxxxxx", msg["prevLogIndex"], len(log))
+    #print("idxxxxxxxxxxx", msg["prevLogIndex"], len(log))
     if len(log) > 0 and msg["term"] < term:
-        print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", msg["term"], term)
+        #print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", msg["term"], term)
         success = False
     elif len(log) > 0 and (msg["prevLogIndex"] >= len(log) or log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]):
-        if msg["prevLogIndex"] >= len(log):
-            print("asdfasdfasdfasdfdadsf")
-        else:
-            print("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", log[msg["prevLogIndex"]]["term"], msg["prevLogTerm"])
+        #if msg["prevLogIndex"] >= len(log):
+         #   print("asdfasdfasdfasdfdadsf")
+        #else:
+        #    print("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", log[msg["prevLogIndex"]]["term"], msg["prevLogTerm"])
         success = False  
     else:
-        print("ccccccccccccccccccccccccccccccccccc")
+        #print("ccccccccccccccccccccccccccccccccccc")
         #print(msg) 
         if len(log) > 0: 
             #print(log[msg["prevLogIndex"]])
@@ -178,7 +178,7 @@ def append_entry_resp(msg):
         matchIndex[rep_id] += len(new_entries)
     else:
         term = msg["term"]
-        print("dec", rep_id, nextIndex[rep_id])
+        #print("dec", rep_id, nextIndex[rep_id])
         nextIndex[rep_id] -= 1
         send_append_entry(rep_id)
 
@@ -214,8 +214,6 @@ while True:
 
         if msg["type"] == "appendEntryResp":
             append_entry_resp(msg)
-            #todo: finish
-            #      ...
 
         if msg['type'] == "put":
             if leader == my_id:
@@ -238,15 +236,11 @@ while True:
             else: 
                 sock.send(make_fail(msg).encode("ascii"))
 
-        # Handle noop messages. This may be removed from your final implementation
-        elif msg['type'] == 'noop':
-            print('%s received a NOOP from %s' % (msg['dst'], msg['src']))
-
     msecs = datetime.datetime.now().timestamp() * 1000
     #print("MSECS {0}, LAST {1}, MSECS-LAST {2}, TIMEOUT {3}".format(msecs, last, msecs-last, timeout_num))
     if (not (leader == my_id)) and  msecs - last > timeout_num:
         #timeout happened call doelection
-        print("WHATMYIDMAN", my_id)
+        #print("WHATMYIDMAN", my_id)
         start_election()
         last = msecs
 
