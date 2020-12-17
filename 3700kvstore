@@ -147,7 +147,7 @@ def append_entry(msg):
     if len(log) > 0 and msg["term"] < term:
         #print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", msg["term"], term)
         success = False
-    elif len(log) > 0 and (msg["prevLogIndex"] >= len(log) or log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]):
+    elif len(log) > 0 and msg["prevLogIndex"] >= 0 and (msg["prevLogIndex"] >= len(log) or log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]):
         #if msg["prevLogIndex"] >= len(log):
          #   print("asdfasdfasdfasdfdadsf")
         #else:
@@ -156,7 +156,7 @@ def append_entry(msg):
     else:
         #print("ccccccccccccccccccccccccccccccccccc")
         #print(msg) 
-        if len(log) > 0: 
+        if len(log) > 0 and msg["prevLogIndex"] >= 0: 
             #print(log[msg["prevLogIndex"]])
             if log[msg["prevLogIndex"]]["term"] != msg["prevLogTerm"]:
                 while len(log) > msg["prevLogIndex"]:
